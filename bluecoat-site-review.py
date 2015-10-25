@@ -105,6 +105,7 @@ def main(argv):
     
     if str(r.status_code) == '200':                                         #We are expecting an HTTP Response Code 200 (OK)
         print '\n[*] Submission Successful.'
+        print '\t[*] URL: %s' % (input_url)
         print '\t[*] Original Category: %s' % (current_category)
         print '\t[*] Requested Category: %s' % (category_mappings[recat])
     else:
