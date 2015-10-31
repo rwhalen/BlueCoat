@@ -19,6 +19,7 @@ import re
 import requests
 import simplejson
 import time
+import textwrap
 
 VERIFY_SSL = True      # Change this to False if you do not want to verify SSL Certificates.
 TIMEWAIT = 5           # Time in seconds to wait between submissions. 
@@ -28,9 +29,8 @@ Use the BLOCKED_CATEGORIES list to list the names of categories that your organi
 If a URL that you are checking is already classified as one of your blocked categories, the script will not
 re-submit the URL to BlueCoat SiteReview for re-classification.
 '''      
-BLOCKED_CATEGORIES = ['Suspicious', 'Malicious Sources/Malnets', 'Spam', 'Phishing', 'Potentially Unwanted Software',
-                      'Adult/Mature Content']
-
+BLOCKED_CATEGORIES = ['Suspicious', 'Malicious Sources/Malnets', 'Spam', 'Phishing', 
+                      'Potentially Unwanted Software', 'Adult/Mature Content', 'Pornography']
 
 
 def main(argv):
@@ -38,9 +38,10 @@ def main(argv):
     input_file = ''
     email_addr = ''
     recat = ''
+    single_url = ''
 
     try:
-        opts, args = getopt.getopt(argv,"hf:c:e:",["file=","category=","email="])
+        opts, args = getopt.getopt(argv,"hu:f:c:e:",["url=","file=","category=","email="])
     except getopt.GetoptError:
         sys.exit(usage())
     for opt, arg in opts:
@@ -52,6 +53,8 @@ def main(argv):
             recat = arg.lower()
         elif opt in ("-e", "--email"):
             email_addr = arg
+        elif opt in ("-u", "--url"):
+            single_url = arg
 
     '''
     The suggested_category value is the value defined in the site review submission form for each
@@ -73,15 +76,22 @@ def main(argv):
     if (email_addr != ''):
         email_checkbox_status = 'on'
 
-    try:
-        with open(input_file, 'r') as f:
-            urls = f.readlines()
-    except:
-        print '[!] Error reading file %s\n\n' %(input_file)
-        usage()
-        sys.exit(1)
-        
-    
+    '''
+    If we were given an input file, we will use that to build the URL list
+    Otherwise, we'll add the single URL provided on the command line.
+    '''
+    if (input_file != ''):
+        try:
+            with open(input_file, 'r') as f:
+                urls = f.readlines()
+        except:
+            print '[!] Error reading file %s\n\n' %(input_file)
+            usage()
+            sys.exit(1)
+    elif (single_url !=''):
+        urls = [single_url]
+    else:
+        sys.exit(usage())
     
     '''
     Mappings used to translate command line arguments to friendly category name
@@ -102,9 +112,12 @@ def main(argv):
                    (KHTML, like Gecko) Chrome/44.0.2403.107 Safari/537.36', 
                                                                           'Origin':'https://sitereview.bluecoat.com',
                                                                           'Referer':'https://sitereview.bluecoat.com/sitereview.jsp'}
-    
-        
+    total_urls = str(len(urls))
+    index = 0
+    print '[*] Preparing to review %s URLs...' % (total_urls)        
     for url in urls:
+        index = index +1
+        time.sleep(TIMEWAIT)
         u = url.strip()
         if is_valid_url(u):
 
@@ -124,11 +137,9 @@ def main(argv):
                 print '[!] - Error submitting %s -- skipping\n\t%s' % (u[0:40],submission_error)
                 continue
             
+            current_category = ''
             current_category_1 = ''
             current_category_2 = ''
-            
-            if (is_unrated == 'True'):
-                current_category = 'Unrated'
                 
             if re.match("^.+\>(.+)\<\/a>\sand\s.+\>(.+)\<.+",current_categorization):
                 current_category_1 = re.match("^.+\>(.+)\<\/a>\sand\s.+\>(.+)\<.+",current_categorization).group(1)
@@ -139,13 +150,24 @@ def main(argv):
                 print '[!] Error: Unexpected data returned for current categorization...exiting!'
                 print '\t%s' %(current_categorization)
                 sys.exit(1)
-   
+                
+            #Account for Uncategorized, 1 category, or 2 category URLs.
+            if (is_unrated == 'True'):
+                current_category = 'Unrated'
+            elif (current_category_1 !='' and current_category_2 !=''):
+                current_category = (current_category_1 + ',' + current_category_2)            
+            elif (current_category_1 !='' and current_category_2 == ''):
+                current_category = current_category_1
+            else:
+                print '[!] Error - Cant determine current category!  Exiting...'
+                sys.exit()
+
             
             if(current_category_1 in BLOCKED_CATEGORIES or current_category_2 in BLOCKED_CATEGORIES):
-                print '[*] %s is already blocked (%s) -- skipping' % (u[0:40],current_category_1+','+current_category_2)
-                time.sleep(TIMEWAIT)
+                print '[%s/%s] %s is already blocked (%s) -- skipping' % (index,total_urls,u[0:40],current_category)
+
             else:
-                print '[*] %s is classified as (%s)' % (u[0:40],current_category_1+','+current_category_2)
+                print '[%s/%s] %s is classified as (%s)' % (index,total_urls,u[0:40],current_category)
                 print '\t[*] Submitting request to categorize %s as %s' % (u[0:40],category_mappings[recat])
    
                 recat_payload = 'referrer=bluecoatsg&suggestedcat=%s&suggestedcat2=&emailCheckBox=%s&email=%s&emailcc=&comments=&overwrite=no&trackid=%s' \
@@ -158,10 +180,10 @@ def main(argv):
                 if (str(r.status_code) == '200' and submission_message[0:38] == 'Your page submission has been received'):
                     print '\t[*] Request submitted:  %s (%s) => %s' % (u[0:40], current_category, category_mappings[recat])
                 else:
-                    print '\t[!] An error occured during submission (HTTP Code%s)' % (r.status_code)
-                    print '\t[!] %s' % (submission_message)
-
-                time.sleep(TIMEWAIT)
+                    w = textwrap.TextWrapper(initial_indent="\t\t",subsequent_indent="\t\t",width=90,break_long_words=True)
+                    print '\t[!] An error occured during submission' % (r.status_code)
+                    wrapped_message_lines = w.wrap(submission_message)
+                    for wrapped_line in wrapped_message_lines: print wrapped_line
 
     return()
 
