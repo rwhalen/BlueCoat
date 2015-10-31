@@ -73,6 +73,9 @@ def main(argv):
         print 'URL: %s\nCurrent Category: %s\n' % (input_url, current_category)
         recat = raw_input('How would you like to reclassify this URL?\n1) Malicious Sources\n2) Phishing\n3) Potentially Unwanted Software\n4) Spam\n5) Suspicious\n0) Exit\n\nEnter Choice >') 
 
+    if recat == '0':    #Exit if no recategorization is requested
+        sys.exit(0)
+
     if (email_addr != ''):
         email_checkbox_status = 'on'
     else:
@@ -93,8 +96,6 @@ def main(argv):
         suggested_category = '101'
     elif recat == '5':              #Suspicious
         suggested_category = '92'
-    elif recat == '0':
-        sys.exit(0)
     else:
         sys.exit(usage())
           
