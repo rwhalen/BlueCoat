@@ -4,13 +4,14 @@
 # Ryan Whalen (rwhalen)
 # 
 # Overview:
-#    Read a file full of URLs and bulk submit them for review to BlueCoat SiteReview. If
+#    Read a file full of URLs (or a single url passed with -u/--url) and bulk submit them for review to BlueCoat SiteReview. If
 #    the URL classification matches a category defined in the BLOCKED_CATEGORIES list, it 
 #    will not be submitted for review.  Otherwise, the category passed to the script with
 #    the -c / --category argument will be used as the suggested category.
 #
-# Example:
-#    python bluecoat-sitereview-bulk.py -f urls.txt -c 1 -e emailaddr@gmail.com
+# Examples:
+#    python bluecoat-sitereview.py -f urls.txt -c 1 -e emailaddr@gmail.com
+#    python bluecoat-sitereview.py -u http://www.badsite.com -c 1 -e emailaddr@gmail.com
 #
 
 import sys
