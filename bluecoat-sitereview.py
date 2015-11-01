@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 #
-# bluecoat-sitereview-bulk.py
+# bluecoat-sitereview.py
 # Ryan Whalen (rwhalen)
 # 
 # Overview:
@@ -21,9 +21,20 @@ import requests
 import simplejson
 import time
 import textwrap
+import calendar
 
-VERIFY_SSL = True      # Change this to False if you do not want to verify SSL Certificates.
-TIMEWAIT = 5           # Time in seconds to wait between submissions. 
+
+VERIFY_SSL = True               # Change this to False if you do not want to verify SSL Certificates.
+TIMEWAIT = 10                   # Time in seconds to wait between submissions.  Prevents throttling.
+SOLVE_CAPTCHAS = False          # Set to True or False to bypass submission throttling.
+
+'''
+Load PIL and pytesseract if we want to solve captchas.  Otherwise,
+they aren't required for the script.
+'''
+if SOLVE_CAPTCHAS == True:
+    from PIL import Image
+    import pytesseract
 
 '''
 Use the BLOCKED_CATEGORIES list to list the names of categories that your organization is already blocking.
@@ -87,7 +98,6 @@ def main(argv):
                 urls = f.readlines()
         except:
             print '[!] Error reading file %s\n\n' %(input_file)
-            usage()
             sys.exit(1)
     elif (single_url !=''):
         urls = [single_url]
@@ -121,8 +131,52 @@ def main(argv):
         time.sleep(TIMEWAIT)
         u = url.strip()
         if is_valid_url(u):
-
-            check_status_payload = 'url=%s' % (u)                                           #Payload for our HTTP POST checking the current category status
+            
+            '''
+            Captcha may be required once a certain number of URLs have been submitted within a period of
+            time.  If a captcha is required, we can solve it by using the PIL and pytesseract python modules
+            and tesseract-ocr. 
+            '''
+            epoch_timestamp = str(calendar.timegm(time.gmtime())*1000)                                  #Epoch timestamp in ms.
+            mainpage_url = 'https://sitereview.bluecoat.com/rest/mainPageData?_=%s' % (epoch_timestamp) #Page that tells us if captcha is required.
+            captcha_url = 'https://sitereview.bluecoat.com/rest/captcha.jpg?%s' % (epoch_timestamp)     #Captcha URL
+            
+            r = s.get(mainpage_url,headers=headers,verify=VERIFY_SSL)                                   #Request mainpage
+            
+            main_page_response = simplejson.loads(r.text)                                               #Parse mainpage json
+            is_captcha_required = main_page_response.get("captchaRequired", {})                         #Read captchaRequired field
+            
+            '''
+            If the SOLVE_CAPTCHAS variable is set to True at the top of the script, we'll go ahead and attempt
+            to solve them (if required).  Otherwise, we'll just skip it and the script will exit when captcha
+            rate limiting is detected.
+            '''
+            if (SOLVE_CAPTCHAS == False):                                       #Set flag to False so we don't try to solve captchas.
+                is_captcha_required == False
+            
+            if (is_captcha_required == True and SOLVE_CAPTCHS == True):         #Solve captcha if desired + required.
+     
+                '''
+                Download the captcha and save it to the CWD as 'captcha.jpg'.  Then, use tesseract-ocr to solve
+                the captcha and store the solution as a string to be submitted with our URL request.
+                '''
+                local_filename = 'captcha.jpg'
+                r = s.get(captcha_url, headers=headers,verify=VERIFY_SSL,stream=True)
+                with open(local_filename, 'wb') as f:
+                    for chunk in r.iter_content(chunk_size=1024): 
+                        if chunk:
+                            f.write(chunk)   
+                            
+                captcha = pytesseract.image_to_string(Image.open('captcha.jpg'))
+                captcha = "".join(captcha.split())
+                
+                os.remove('captcha.jpg')                                            #Remove the downloaded captcha.
+                
+                check_status_payload = 'url=%s&captcha=%s' % (u,captcha)            #URL format to be used when Captcha is required.
+                
+            else:
+                check_status_payload = 'url=%s' % (u)
+     
             r = s.post(cat_status_url,headers=headers,data=check_status_payload,verify=VERIFY_SSL)      #Generate HTTP POST to check current category status
         
             response_dict = simplejson.loads(r.text)
@@ -133,8 +187,10 @@ def main(argv):
             is_unrated = response_dict.get("unrated", {})                       #Flag indicating the URL is unrated.  
             ratedate = response_dict.get("ratedate", {})
             
-            
-            if submission_error:
+            if (submission_error == 'Please complete the CAPTCHA'):
+                print '\t[!] Rate limiting detected (CAPTCHA)...exiting script.'
+                sys.exit()
+            elif submission_error:
                 print '[!] - Error submitting %s -- skipping\n\t%s' % (u[0:40],submission_error)
                 continue
             
@@ -180,15 +236,19 @@ def main(argv):
                 
                 if (str(r.status_code) == '200' and submission_message[0:38] == 'Your page submission has been received'):
                     print '\t[*] Request submitted:  %s (%s) => %s' % (u[0:40], current_category, category_mappings[recat])
+
                 else:
                     w = textwrap.TextWrapper(initial_indent="\t\t",subsequent_indent="\t\t",width=90,break_long_words=True)
-                    print '\t[!] An error occured during submission' % (r.status_code)
+                    print '\t[!] An error occured during submission'
                     wrapped_message_lines = w.wrap(submission_message)
                     for wrapped_line in wrapped_message_lines: print wrapped_line
 
     return()
 
-
+'''
+Code from Django url validator
+https://github.com/django/django/blob/master/django/core/validators.py
+'''
 def is_valid_url(url):
     import re
     regex = re.compile(
