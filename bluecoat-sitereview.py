@@ -37,6 +37,12 @@ if SOLVE_CAPTCHAS == True:
     import pytesseract
 
 '''
+If we aren't verifying SSL, disable warnings to clean up output.
+'''
+if VERIFY_SSL == False:
+    requests.packages.urllib3.disable_warnings()
+
+'''
 Use the BLOCKED_CATEGORIES list to list the names of categories that your organization is already blocking.
 If a URL that you are checking is already classified as one of your blocked categories, the script will not
 re-submit the URL to BlueCoat SiteReview for re-classification.
@@ -128,9 +134,15 @@ def main(argv):
     print '[*] Preparing to review %s URLs...' % (total_urls)        
     for url in urls:
         index = index +1
-        time.sleep(TIMEWAIT)
+        
+        #Start waiting after the first request.
+        if index > 1:
+            time.sleep(TIMEWAIT)
         u = url.strip()
-        if is_valid_url(u):
+        
+        if is_valid_url(u) is None:
+            print '[%s/%s] URL: %s is not a valid URL -- skipping' % (index,total_urls,u[0:40])
+        else:
             
             '''
             Captcha may be required once a certain number of URLs have been submitted within a period of
@@ -252,7 +264,7 @@ https://github.com/django/django/blob/master/django/core/validators.py
 def is_valid_url(url):
     import re
     regex = re.compile(
-        r'^https?://'  # http:// or https://
+        #r'^https?://'  # http:// or https://
         r'(?:(?:[A-Z0-9](?:[A-Z0-9-]{0,61}[A-Z0-9])?\.)+[A-Z]{2,6}\.?|'  # domain...
         r'\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})' # ...or ip
         r'(?::\d+)?'  # optional port
