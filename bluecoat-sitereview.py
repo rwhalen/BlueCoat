@@ -272,8 +272,10 @@ def is_valid_url(url):
     return url is not None and regex.search(url)
     
 def usage():
-    print 'Usage:\tbluecoat-sitereview-bulk.py -f [file] -c [category index] -e [email_address]\n\nExample: \
-    bluecoat-sitereview-bulk.py -f urls_to_check.txt -c 1 -e my_email_address@gmail.com\n\nCategory Index Options:\n1:\tMalicious Sources\n2:\tPhishing\n3:\tPotentially Unwanted Software\n4:\tSpam\n5:\tSuspicious\n\n'
+    print 'Usage:\tbluecoat-sitereview.py -h [-f file] -c [category index] -e [email address]\n'
+    print 'Examples:\nbluecoat-sitereview.py -f urls_to_check.txt -c 1 -e my_email_address@gmail.com'
+    print 'bluecoat-sitereview.py -u http://www.badsite.com -c 1 -e my_email_address@gmail.com\n'
+    print 'Category Index Options:\n1:\tMalicious Sources\n2:\tPhishing\n3:\tPotentially Unwanted Software\n4:\tSpam\n5:\tSuspicious\n\n'
     
 
 if __name__ == '__main__':
